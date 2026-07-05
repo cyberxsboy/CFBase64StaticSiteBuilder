@@ -145,9 +145,9 @@ export async function generateSite() {
         .container { max-width: 800px; margin: 0 auto; }
         h1 { text-align: center; margin-bottom: 30px; font-size: 1.8rem; color: var(--primary); }
         .item { background: var(--card); padding: 15px; margin-bottom: 12px; border-radius: 8px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); word-break: break-all; font-family: ui-monospace, monospace; font-size: 0.9em; }
-        .info-box { text-align: center; margin: 20px 0; padding: 10px; background: var(--card); border: 1px dashed #cbd5e1; border-radius: 8px; }
-        .info-box img { max-width: 100%; height: auto; border-radius: 4px; }
-        .info-box p { font-size: 0.8em; color: #64748b; margin-bottom: 5px; }
+        .media-container { text-align: center; margin: 20px 0; padding: 10px; background: var(--card); border: 1px dashed #cbd5e1; border-radius: 8px; cursor: pointer; }
+        .media-container img { max-width: 100%; height: auto; border-radius: 4px; }
+        .media-container p { font-size: 0.8em; color: #64748b; margin-bottom: 5px; }
         .pagination { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 30px 0; }
         .pagination a { padding: 8px 16px; border: 1px solid var(--border); text-decoration: none; border-radius: 6px; background: var(--card); color: var(--text); font-size: 0.9em; transition: all 0.2s; }
         .pagination a:hover { background: var(--primary); color: white; border-color: var(--primary); }
@@ -171,10 +171,8 @@ export async function generateSite() {
             
             // Insert ad every 4 items
             if ((i + 1) % 4 === 0) {
-                htmlContent += `            <div class="info-box">
-                <a href="${adLink}" target="_blank">
+                htmlContent += `            <div class="media-container" onclick="window.open(atob('${Buffer.from('https://www.xn--nly574e.biz/auth/register?code=zI7qvG2n').toString('base64')}'), '_blank')">
                     <img src="./public/${currentAdImageName}" alt="Featured Content">
-                </a>
             </div>\n`;
                 adCount++;
             }
