@@ -68,13 +68,35 @@ export async function generateSite() {
     await fs.mkdir(distDir, { recursive: true });
     await fs.mkdir(publicDir, { recursive: true });
 
-    // Download ad image locally
-    console.log('Downloading ad image...');
+    let currentAdImageName = adImageLocalName;
+    const localSourcePath = path.join(__dirname, 'public', adImageLocalName);
+    const targetPath = path.join(publicDir, adImageLocalName);
+
     try {
-        await downloadFile(adImageUrl, path.join(publicDir, adImageLocalName));
-        console.log('Ad image downloaded successfully.');
-    } catch (e) {
-        console.warn('Could not download ad image:', e.message);
+        // 1. 优先检查本地是否存在 public/05.png
+        await fs.access(localSourcePath);
+        console.log('Found local ad image, copying to dist...');
+        await fs.copyFile(localSourcePath, targetPath);
+        console.log('Local ad image copied successfully.');
+    } catch (err) {
+        // 2. 如果本地不存在，则尝试从网络下载
+        console.log('Local ad image not found. Downloading ad image from URL...');
+        try {
+            await downloadFile(adImageUrl, targetPath);
+            console.log('Ad image downloaded successfully.');
+        } catch (e) {
+            console.warn('Could not download ad image:', e.message);
+            console.log('Creating a fallback placeholder image...');
+            // Create a simple SVG placeholder if download fails
+            const svgPlaceholder = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="150" viewBox="0 0 600 150">
+                <rect width="600" height="150" fill="#f1f5f9"/>
+                <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#64748b">
+                    广告图片加载失败 (原图404不存在)
+                </text>
+            </svg>`;
+            currentAdImageName = adImageLocalName.replace('.png', '.svg');
+            await fs.writeFile(path.join(publicDir, currentAdImageName), svgPlaceholder);
+        }
     }
 
     let allLines = [];
@@ -152,7 +174,7 @@ export async function generateSite() {
                 htmlContent += `            <div class="ad">
                 <p>— 赞助广告 —</p>
                 <a href="${adLink}" target="_blank" rel="nofollow">
-                    <img src="./public/${adImageLocalName}" alt="Advertisement">
+                    <img src="./public/${currentAdImageName}" alt="Advertisement">
                 </a>
             </div>\n`;
                 adCount++;
