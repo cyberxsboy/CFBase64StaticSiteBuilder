@@ -172,8 +172,7 @@ export async function generateSite() {
             // Insert ad every 4 items
             if ((i + 1) % 4 === 0) {
                 htmlContent += `            <div class="info-box">
-                <p>— 赞助广告 —</p>
-                <a href="${adLink}" target="_blank" rel="nofollow">
+                <a href="${adLink}" target="_blank">
                     <img src="./public/${currentAdImageName}" alt="Featured Content">
                 </a>
             </div>\n`;
