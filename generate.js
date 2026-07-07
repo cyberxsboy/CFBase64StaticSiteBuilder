@@ -109,9 +109,12 @@ export async function generateSite() {
             if (!res.ok) throw new Error(`Status ${res.status}`);
             const text = await res.text();
             const decoded = decodeBase64IfNeeded(text);
-            const lines = decoded.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+            const lines = decoded.split(/\r?\n/)
+                .map(l => l.trim())
+                .filter(l => l.length > 0)
+                .filter(l => /^[a-zA-Z0-9+-]+:\/\//.test(l));
             allLines.push(...lines);
-            console.log(` -> Fetched ${lines.length} lines`);
+            console.log(` -> Fetched ${lines.length} valid node lines`);
         } catch (e) {
             console.error(`Error processing ${url}:`, e);
         }
