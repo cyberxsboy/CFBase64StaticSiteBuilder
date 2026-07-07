@@ -119,6 +119,13 @@ export async function generateSite() {
 
     // Deduplicate lines
     allLines = [...new Set(allLines)];
+
+    // 随机打乱节点顺序，确保每次构建首页的内容都会更新
+    for (let i = allLines.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allLines[i], allLines[j]] = [allLines[j], allLines[i]];
+    }
+
     console.log(`Total valid unique lines across all resources: ${allLines.length}`);
 
     const itemsPerPage = 10;
