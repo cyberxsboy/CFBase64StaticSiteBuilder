@@ -136,6 +136,18 @@ export async function generateSite() {
 
     const sitemapLinks = [];
 
+    // Format current time as Y-m-d H:i:s (Beijing Time UTC+8)
+    const now = new Date();
+    const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const beijingTime = new Date(utcTime + (3600000 * 8));
+    const Y = beijingTime.getFullYear();
+    const m = String(beijingTime.getMonth() + 1).padStart(2, '0');
+    const d = String(beijingTime.getDate()).padStart(2, '0');
+    const H = String(beijingTime.getHours()).padStart(2, '0');
+    const min = String(beijingTime.getMinutes()).padStart(2, '0');
+    const sec = String(beijingTime.getSeconds()).padStart(2, '0');
+    const formattedTime = `${Y}-${m}-${d} ${H}:${min}:${sec}`;
+
     // Generate HTML pages
     for (let page = 1; page <= totalPages; page++) {
         const start = (page - 1) * itemsPerPage;
@@ -153,7 +165,8 @@ export async function generateSite() {
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.5; background: var(--bg); color: var(--text); padding: 20px; }
         .container { max-width: 800px; margin: 0 auto; }
-        h1 { text-align: center; margin-bottom: 30px; font-size: 1.8rem; color: var(--primary); }
+        h1 { text-align: center; margin-bottom: 10px; font-size: 1.8rem; color: var(--primary); }
+        .publish-time { text-align: center; color: #64748b; font-size: 0.9em; margin-bottom: 30px; }
         .item { background: var(--card); padding: 15px; margin-bottom: 12px; border-radius: 8px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); word-break: break-all; font-family: ui-monospace, monospace; font-size: 0.9em; }
         .media-container { text-align: center; margin: 20px 0; padding: 10px; background: var(--card); border: 1px dashed #cbd5e1; border-radius: 8px; cursor: pointer; }
         .media-container img { max-width: 100%; height: auto; border-radius: 4px; }
@@ -172,6 +185,7 @@ export async function generateSite() {
 <body>
     <div class="container">
         <h1>免费节点资源聚合 (第 ${page}/${totalPages} 页)</h1>
+         <div class="publish-time">发布时间：${formattedTime}</div>
         <div class="content">
 `;
 
