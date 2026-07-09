@@ -101,6 +101,25 @@ export async function generateSite() {
 
     let allLines = [];
     
+    // Attempt to fetch historical accumulated nodes
+    console.log('Attempting to fetch historical nodes for accumulation...');
+    try {
+        const historyRes = await fetch('https://abc.build.ccwu.cc/nodes.txt');
+        if (historyRes.ok) {
+            const historyText = await historyRes.text();
+            const historyLines = historyText.split(/\r?\n/)
+                .map(l => l.trim())
+                .filter(l => l.length > 0)
+                .filter(l => /^[a-zA-Z0-9+-]+:\/\//.test(l));
+            allLines.push(...historyLines);
+            console.log(` -> Fetched ${historyLines.length} historical valid node lines`);
+        } else {
+            console.log(` -> Historical nodes fetch skipped: HTTP ${historyRes.status}`);
+        }
+    } catch (e) {
+        console.log(` -> Historical nodes fetch failed: ${e.message}`);
+    }
+
     // Fetch and decode resources
     for (const url of urls) {
         console.log(`Fetching ${url}...`);
@@ -127,6 +146,12 @@ export async function generateSite() {
     for (let i = allLines.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [allLines[i], allLines[j]] = [allLines[j], allLines[i]];
+    }
+
+    // 限制总节点数，防止聚合源节点过多导致“无限累积”浏览器崩溃。放宽到 20000 个以实现“累积”效果。
+    const MAX_NODES = 20000; 
+    if (allLines.length > MAX_NODES) {
+        allLines = allLines.slice(0, MAX_NODES);
     }
 
     console.log(`Total valid unique lines across all resources: ${allLines.length}`);
@@ -256,6 +281,9 @@ export async function generateSite() {
     sitemapXml += `</urlset>`;
     
     await fs.writeFile(path.join(distDir, 'sitemap.xml'), sitemapXml);
+
+    // Save accumulated nodes.txt for next run
+    await fs.writeFile(path.join(distDir, 'nodes.txt'), allLines.join('\n'));
 
     console.log('Build complete! Static files generated in ./dist directory.');
 }
