@@ -59,6 +59,24 @@ function escapeHtml(unsafe) {
          .replace(/'/g, "&#039;");
 }
 
+
+function normalizeNode(nodeStr) {
+    try {
+        if (nodeStr.startsWith('vmess://')) {
+            const payload = nodeStr.slice(8);
+            const decoded = Buffer.from(payload, 'base64').toString('utf8');
+            const obj = JSON.parse(decoded);
+            delete obj.ps;
+            return 'vmess://' + Buffer.from(JSON.stringify(obj)).toString('base64');
+        } else if (nodeStr.includes('#')) {
+            return nodeStr.split('#')[0];
+        }
+    } catch (e) {
+        return nodeStr;
+    }
+    return nodeStr;
+}
+
 export async function generateSite() {
     const distDir = path.join(__dirname, 'dist');
     const publicDir = path.join(distDir, 'public');
@@ -123,6 +141,7 @@ export async function generateSite() {
 
     let historyBatches = [];
     let seenNodes = new Set();
+    let seenNormalized = new Set();
     
     // Attempt to fetch historical accumulated nodes
     console.log('Attempting to fetch historical nodes for accumulation...');
@@ -130,11 +149,30 @@ export async function generateSite() {
         const historyDataRes = await fetch('https://abc.build.ccwu.cc/data.json');
         const contentType = historyDataRes.headers.get('content-type') || '';
         if (historyDataRes.ok && contentType.includes('application/json')) {
+            
             historyBatches = await historyDataRes.json();
+            
+            // 修复历史数据中因为 remark 变动导致的重复累加问题，保留最早的时间戳
+            let globalSeenNorm = new Set();
+            for (let i = historyBatches.length - 1; i >= 0; i--) {
+                const batch = historyBatches[i];
+                const dedupedBatchNodes = [];
+                for (const node of batch.nodes) {
+                    const norm = normalizeNode(node);
+                    if (!globalSeenNorm.has(norm)) {
+                        dedupedBatchNodes.push(node);
+                        globalSeenNorm.add(norm);
+                    }
+                }
+                batch.nodes = dedupedBatchNodes;
+            }
+            historyBatches = historyBatches.filter(b => b.nodes.length > 0);
+
             let totalHistoryNodes = 0;
             for (const batch of historyBatches) {
                 for (const node of batch.nodes) {
                     seenNodes.add(node);
+                    seenNormalized.add(normalizeNode(node));
                     totalHistoryNodes++;
                 }
             }
@@ -154,7 +192,10 @@ export async function generateSite() {
                     .filter(l => /^[a-zA-Z0-9+-]+:\/\//.test(l));
                 
                 const uniqueOld = [...new Set(historyLines)];
-                uniqueOld.forEach(n => seenNodes.add(n));
+                uniqueOld.forEach(n => {
+                    seenNodes.add(n);
+                    seenNormalized.add(normalizeNode(n));
+                });
                 if (uniqueOld.length > 0) {
                     historyBatches.push({ time: fallbackTime, nodes: uniqueOld });
                 }
@@ -191,8 +232,10 @@ export async function generateSite() {
     // Deduplicate new nodes against historical nodes
     let uniqueNewNodes = [];
     for (const node of newLines) {
-        if (!seenNodes.has(node)) {
+        const norm = normalizeNode(node);
+        if (!seenNormalized.has(norm)) {
             uniqueNewNodes.push(node);
+            seenNormalized.add(norm);
             seenNodes.add(node);
         }
     }
