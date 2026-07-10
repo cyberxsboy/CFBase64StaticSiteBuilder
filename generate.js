@@ -99,26 +99,75 @@ export async function generateSite() {
         }
     }
 
-    let allLines = [];
+    // Format current time as Y-m-d H:i:s (Beijing Time UTC+8)
+    const now = new Date();
+    const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const beijingTime = new Date(utcTime + (3600000 * 8));
+    const Y = beijingTime.getFullYear();
+    const m = String(beijingTime.getMonth() + 1).padStart(2, '0');
+    const d = String(beijingTime.getDate()).padStart(2, '0');
+    const H = String(beijingTime.getHours()).padStart(2, '0');
+    const min = String(beijingTime.getMinutes()).padStart(2, '0');
+    const sec = String(beijingTime.getSeconds()).padStart(2, '0');
+    const formattedTime = `${Y}-${m}-${d} ${H}:${min}:${sec}`;
+
+    // Generate a fallback old time (yesterday)
+    const oldTimeDate = new Date(beijingTime.getTime() - 86400000);
+    const oY = oldTimeDate.getFullYear();
+    const om = String(oldTimeDate.getMonth() + 1).padStart(2, '0');
+    const od = String(oldTimeDate.getDate()).padStart(2, '0');
+    const oH = String(oldTimeDate.getHours()).padStart(2, '0');
+    const omin = String(oldTimeDate.getMinutes()).padStart(2, '0');
+    const osec = String(oldTimeDate.getSeconds()).padStart(2, '0');
+    const fallbackTime = `${oY}-${om}-${od} ${oH}:${omin}:${osec}`;
+
+    let historyBatches = [];
+    let seenNodes = new Set();
     
     // Attempt to fetch historical accumulated nodes
     console.log('Attempting to fetch historical nodes for accumulation...');
     try {
-        const historyRes = await fetch('https://abc.build.ccwu.cc/nodes.txt');
-        if (historyRes.ok) {
-            const historyText = await historyRes.text();
-            const historyLines = historyText.split(/\r?\n/)
-                .map(l => l.trim())
-                .filter(l => l.length > 0)
-                .filter(l => /^[a-zA-Z0-9+-]+:\/\//.test(l));
-            allLines.push(...historyLines);
-            console.log(` -> Fetched ${historyLines.length} historical valid node lines`);
+        const historyDataRes = await fetch('https://abc.build.ccwu.cc/data.json');
+        const contentType = historyDataRes.headers.get('content-type') || '';
+        if (historyDataRes.ok && contentType.includes('application/json')) {
+            historyBatches = await historyDataRes.json();
+            let totalHistoryNodes = 0;
+            for (const batch of historyBatches) {
+                for (const node of batch.nodes) {
+                    seenNodes.add(node);
+                    totalHistoryNodes++;
+                }
+            }
+            console.log(` -> Fetched ${totalHistoryNodes} historical valid node lines from data.json`);
         } else {
-            console.log(` -> Historical nodes fetch skipped: HTTP ${historyRes.status}`);
+            throw new Error(`Invalid content-type or status for data.json`);
         }
     } catch (e) {
-        console.log(` -> Historical nodes fetch failed: ${e.message}`);
+        console.log(` -> data.json fetch failed (${e.message}). Falling back to nodes.txt...`);
+        try {
+            const historyRes = await fetch('https://abc.build.ccwu.cc/nodes.txt');
+            if (historyRes.ok) {
+                const historyText = await historyRes.text();
+                const historyLines = historyText.split(/\r?\n/)
+                    .map(l => l.trim())
+                    .filter(l => l.length > 0)
+                    .filter(l => /^[a-zA-Z0-9+-]+:\/\//.test(l));
+                
+                const uniqueOld = [...new Set(historyLines)];
+                uniqueOld.forEach(n => seenNodes.add(n));
+                if (uniqueOld.length > 0) {
+                    historyBatches.push({ time: fallbackTime, nodes: uniqueOld });
+                }
+                console.log(` -> Fetched ${uniqueOld.length} historical valid node lines from nodes.txt`);
+            } else {
+                console.log(` -> Historical nodes fetch skipped: HTTP ${historyRes.status}`);
+            }
+        } catch (err) {
+            console.log(` -> Historical nodes fetch failed: ${err.message}`);
+        }
     }
+
+    let newLines = [];
 
     // Fetch and decode resources
     for (const url of urls) {
@@ -132,52 +181,75 @@ export async function generateSite() {
                 .map(l => l.trim())
                 .filter(l => l.length > 0)
                 .filter(l => /^[a-zA-Z0-9+-]+:\/\//.test(l));
-            allLines.push(...lines);
+            newLines.push(...lines);
             console.log(` -> Fetched ${lines.length} valid node lines`);
         } catch (e) {
             console.error(`Error processing ${url}:`, e);
         }
     }
 
-    // Deduplicate lines
-    allLines = [...new Set(allLines)];
+    // Deduplicate new nodes against historical nodes
+    let uniqueNewNodes = [];
+    for (const node of newLines) {
+        if (!seenNodes.has(node)) {
+            uniqueNewNodes.push(node);
+            seenNodes.add(node);
+        }
+    }
 
-    // 随机打乱节点顺序，确保每次构建首页的内容都会更新
-    for (let i = allLines.length - 1; i > 0; i--) {
+    // 随机打乱新节点顺序，确保每次构建首页的新内容部分会有更新感
+    for (let i = uniqueNewNodes.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
-        [allLines[i], allLines[j]] = [allLines[j], allLines[i]];
+        [uniqueNewNodes[i], uniqueNewNodes[j]] = [uniqueNewNodes[j], uniqueNewNodes[i]];
+    }
+
+    // Prepend today's batch
+    if (uniqueNewNodes.length > 0) {
+        historyBatches.unshift({ time: formattedTime, nodes: uniqueNewNodes });
+    }
+
+    // Flatten for pagination
+    let allItems = [];
+    for (const batch of historyBatches) {
+        for (const node of batch.nodes) {
+            allItems.push({ time: batch.time, node: node });
+        }
     }
 
     // 限制总节点数，防止聚合源节点过多导致“无限累积”浏览器崩溃。放宽到 20000 个以实现“累积”效果。
     const MAX_NODES = 20000; 
-    if (allLines.length > MAX_NODES) {
-        allLines = allLines.slice(0, MAX_NODES);
+    if (allItems.length > MAX_NODES) {
+        allItems = allItems.slice(0, MAX_NODES);
+        
+        let count = 0;
+        let trimmedHistory = [];
+        for (const batch of historyBatches) {
+            if (count >= MAX_NODES) break;
+            let batchNodes = batch.nodes;
+            if (count + batchNodes.length > MAX_NODES) {
+                batchNodes = batchNodes.slice(0, MAX_NODES - count);
+            }
+            if (batchNodes.length > 0) {
+                trimmedHistory.push({ time: batch.time, nodes: batchNodes });
+            }
+            count += batchNodes.length;
+        }
+        historyBatches = trimmedHistory;
     }
 
-    console.log(`Total valid unique lines across all resources: ${allLines.length}`);
+    console.log(`Total valid unique lines across all resources: ${allItems.length}`);
 
     const itemsPerPage = 10;
-    const totalPages = Math.ceil(allLines.length / itemsPerPage);
+    const totalPages = Math.ceil(allItems.length / itemsPerPage);
 
     const sitemapLinks = [];
-
-    // Format current time as Y-m-d H:i:s (Beijing Time UTC+8)
-    const now = new Date();
-    const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
-    const beijingTime = new Date(utcTime + (3600000 * 8));
-    const Y = beijingTime.getFullYear();
-    const m = String(beijingTime.getMonth() + 1).padStart(2, '0');
-    const d = String(beijingTime.getDate()).padStart(2, '0');
-    const H = String(beijingTime.getHours()).padStart(2, '0');
-    const min = String(beijingTime.getMinutes()).padStart(2, '0');
-    const sec = String(beijingTime.getSeconds()).padStart(2, '0');
-    const formattedTime = `${Y}-${m}-${d} ${H}:${min}:${sec}`;
 
     // Generate HTML pages
     for (let page = 1; page <= totalPages; page++) {
         const start = (page - 1) * itemsPerPage;
         const end = start + itemsPerPage;
-        const pageItems = allLines.slice(start, end);
+        const pageItems = allItems.slice(start, end);
+        const pagePublishTime = pageItems.length > 0 ? pageItems[0].time : formattedTime;
 
         let htmlContent = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -210,13 +282,13 @@ export async function generateSite() {
 <body>
     <div class="container">
         <h1>免费节点资源聚合 (第 ${page}/${totalPages} 页)</h1>
-         <div class="publish-time">发布时间：${formattedTime}</div>
+         <div class="publish-time">发布时间：${pagePublishTime}</div>
         <div class="content">
 `;
 
         let adCount = 0;
         for (let i = 0; i < pageItems.length; i++) {
-            htmlContent += `            <div class="item">${escapeHtml(pageItems[i])}</div>\n`;
+            htmlContent += `            <div class="item">${escapeHtml(pageItems[i].node)}</div>\n`;
             
             // Insert ad every 4 items
             if ((i + 1) % 4 === 0) {
@@ -282,8 +354,12 @@ export async function generateSite() {
     
     await fs.writeFile(path.join(distDir, 'sitemap.xml'), sitemapXml);
 
-    // Save accumulated nodes.txt for next run
-    await fs.writeFile(path.join(distDir, 'nodes.txt'), allLines.join('\n'));
+    // Save accumulated nodes.txt for next run (plain text backward compatible)
+    const plainNodes = allItems.map(item => item.node);
+    await fs.writeFile(path.join(distDir, 'nodes.txt'), plainNodes.join('\n'));
+    
+    // Save data.json for time preservation
+    await fs.writeFile(path.join(distDir, 'data.json'), JSON.stringify(historyBatches));
 
     console.log('Build complete! Static files generated in ./dist directory.');
 }
